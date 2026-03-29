@@ -48,36 +48,110 @@ exports.getInvoice = async (req, res) => {
 // @access  Private
 exports.createInvoice = async (req, res) => {
   try {
-    // Get customer data to create snapshot
-    const customer = await Customer.findById(req.body.customerId);
-    
-    if (!customer) {
-      return res.status(404).json({ message: 'Customer not found' });
-    }
+    const { partyMode, customerId, vendorId } = req.body;
 
-    // ✅ Create document with customer snapshot
-    const invoiceData = {
-      ...req.body,
-      documentType: req.body.documentType || 'invoice', // ✅ Default to invoice
-      customerSnapshot: {
-        name: customer.name,
+    // ✅ Sanitize items — convert empty string IDs to null
+    const sanitizedItems = (req.body.items || []).map(item => ({
+      ...item,
+      productId: item.productId || null,
+      inventoryId: item.inventoryId || null,
+    }));
+
+    let customerSnapshot = {};
+
+    if (partyMode === "vendor" && vendorId) {
+      const vendor = await Vendor.findById(vendorId);
+      if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+
+      customerSnapshot = {
+        name:          vendor.name,
+        vatNumber:     vendor.vatNumber,
+        accountNo:     vendor.accountNo,
+        phone:         vendor.phone,
+        address:       vendor.address,
+        contactPerson: vendor.contactPerson,
+      };
+
+      const invoiceData = {
+        ...req.body,
+        items: sanitizedItems,
+        documentType: req.body.documentType || 'invoice',
+        customerId:   null,
+        vendorId:     vendor._id,
+        customerSnapshot,
+        vendorSnapshot: customerSnapshot,
+      };
+
+      const invoice = new Invoice(invoiceData);
+      const newInvoice = await invoice.save();
+      await newInvoice.populate('vendorId');
+      return res.status(201).json(newInvoice);
+
+    } else {
+      const customer = await Customer.findById(customerId);
+      if (!customer) return res.status(404).json({ message: 'Customer not found' });
+
+      customerSnapshot = {
+        name:      customer.name,
         vatNumber: customer.vatNumber,
         accountNo: customer.accountNo,
-        phone: customer.phone,
-        address: customer.address
-      }
-    };
+        phone:     customer.phone,
+        address:   customer.address,
+      };
 
-    const invoice = new Invoice(invoiceData);
-    const newInvoice = await invoice.save();
-    
-    // Populate before sending response
-    await newInvoice.populate('customerId');
-    
-    res.status(201).json(newInvoice);
+      const invoiceData = {
+        ...req.body,
+        items: sanitizedItems,
+        documentType: req.body.documentType || 'invoice',
+        vendorId: null,
+        customerSnapshot,
+      };
+
+      const invoice = new Invoice(invoiceData);
+      const newInvoice = await invoice.save();
+      await newInvoice.populate('customerId');
+      return res.status(201).json(newInvoice);
+    }
+
   } catch (error) {
     console.error('Error creating invoice:', error);
     res.status(400).json({ message: error.message });
+  }
+};
+
+
+
+// In invoiceController.js
+exports.getNextDocumentNumber = async (req, res) => {
+  try {
+    const { type } = req.query;
+    
+    const prefixes = {
+      invoice: 'INV',
+      quotation: 'QUO',
+      proforma: 'PRO',
+      purchase: 'PUR'
+    };
+
+    const prefix = prefixes[type] || 'INV';
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const pattern = `${prefix}-${dateStr}-`;
+
+    // Find the LAST invoice number with this prefix today
+    const lastDoc = await Invoice.findOne({
+      invoiceNumber: { $regex: `^${pattern}` }
+    }).sort({ invoiceNumber: -1 });
+
+    let nextNumber = '001';
+    if (lastDoc) {
+      const lastSeq = parseInt(lastDoc.invoiceNumber.split('-')[2]) || 0;
+      nextNumber = (lastSeq + 1).toString().padStart(3, '0');
+    }
+
+    res.json({ number: `${prefix}-${dateStr}-${nextNumber}` });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -165,6 +239,71 @@ exports.getPurchaseReport = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting purchase report:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+
+
+
+// In invoiceController.js
+exports.updateInvoiceStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const invoice = await Invoice.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+    res.json(invoice);
+  } catch (error) {
+    console.error('Error updating invoice status:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+exports.getVATReport = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const dateFilter = {};
+    if (startDate && endDate) {
+      dateFilter.invoiceDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    // Sales invoices
+    const sales = await Invoice.find({ documentType: 'invoice', ...dateFilter });
+    const totalSalesAmount = sales.reduce((s, i) => s + (i.grandTotal || 0), 0);
+    const totalSalesVAT = sales.reduce((s, i) => s + (i.vatAmount || 0), 0);
+
+    // Purchase invoices
+    const purchases = await Invoice.find({ documentType: 'purchase', ...dateFilter });
+    const totalPurchaseAmount = purchases.reduce((s, i) => s + (i.grandTotal || 0), 0);
+    const totalPurchaseVAT = purchases.reduce((s, i) => s + (i.vatAmount || 0), 0);
+
+    const vatDifference = totalSalesVAT - totalPurchaseVAT;
+
+    res.json({
+      sales: {
+        count: sales.length,
+        totalAmount: totalSalesAmount.toFixed(2),
+        totalVAT: totalSalesVAT.toFixed(2),
+      },
+      purchases: {
+        count: purchases.length,
+        totalAmount: totalPurchaseAmount.toFixed(2),
+        totalVAT: totalPurchaseVAT.toFixed(2),
+      },
+      vatDifference: vatDifference.toFixed(2),
+      status: vatDifference >= 0 ? 'payable' : 'refundable',
+    });
+  } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };

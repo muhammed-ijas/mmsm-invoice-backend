@@ -1,4 +1,5 @@
 
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -32,18 +33,24 @@ const connectDB = async () => {
 connectDB();
 
 // Import Routes
-const authRoutes = require('./routes/auth');         // ← NEW
+const authRoutes = require('./routes/auth');        
 const companyRoutes = require('./routes/company');
 const customerRoutes = require('./routes/customers');
 const productRoutes = require('./routes/products');
 const invoiceRoutes = require('./routes/invoices');
+const dashboardRoutes = require('./routes/dashboard');
+const vendorRoutes = require('./routes/vendors');
+const inventoryRoutes = require('./routes/inventory');
 
 // Use Routes
-app.use('/api/auth', authRoutes);                    // ← NEW
+app.use('/api/auth', authRoutes);   
+app.use('/api/dashboard', dashboardRoutes);               
 app.use('/api/company', companyRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/invoices', invoiceRoutes);
+app.use('/api/vendors', vendorRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 // Root Route
 app.get('/', (req, res) => {

@@ -85,3 +85,40 @@ exports.deleteCustomer = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+// @desc    Get customer statement (all invoices for a customer)
+// @route   GET /api/customers/:id/statement
+exports.getCustomerStatement = async (req, res) => {
+  try {
+    const customer = await Customer.findById(req.params.id);
+    if (!customer) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    const invoices = await Invoice.find({
+      customerId: req.params.id,
+      documentType: { $in: ['invoice', null] },  // only real invoices
+    }).sort({ invoiceDate: 1 });
+
+    const totalBilled = invoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+    const totalPaid = invoices
+      .filter(inv => inv.status === 'paid')
+      .reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+
+    res.json({
+      customer,
+      invoices,
+      summary: {
+        totalInvoices: invoices.length,
+        totalBilled,
+        totalPaid,
+        outstanding: totalBilled - totalPaid,
+      }
+    });
+  } catch (error) {
+    console.error('Error getting customer statement:', error);
+    res.status(500).json({ message: error.message });
+  }
+};

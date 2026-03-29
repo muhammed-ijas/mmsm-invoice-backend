@@ -6,12 +6,20 @@ const {
   createInvoice,
   deleteInvoice,
   getSalesReport,      // ✅ NEW
-  getPurchaseReport    // ✅ NEW
+  getPurchaseReport  ,
+  getNextDocumentNumber  ,
+  updateInvoiceStatus,
+  getVATReport
 } = require('../controllers/invoiceController');
 
 // ✅ Report routes MUST come before /:id route
 router.get('/reports/sales', getSalesReport);
 router.get('/reports/purchases', getPurchaseReport);
+router.get('/reports/vat', getVATReport);
+
+router.get('/next-number', getNextDocumentNumber); // ← must be ABOVE /:id route
+router.patch('/:id/status', updateInvoiceStatus); // ✅ add this — ABOVE /:id GET
+
 
 // Regular routes
 router.get('/', getInvoices);
