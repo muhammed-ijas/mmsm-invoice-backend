@@ -1,5 +1,6 @@
 const Invoice = require('../models/Invoice');
 const Customer = require('../models/Customer');
+const Vendor = require('../models/Vendor');
 
 // @desc    Get all invoices with filtering
 // @route   GET /api/invoices?documentType=invoice

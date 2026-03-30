@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const vendorSchema = new mongoose.Schema({
   name: { type: String, required: true },
   vatNumber: { type: String },
-  accountNo: { type: String, unique: true, sparse: true },
+  accountNo: { type: String, sparse: true },
   phone: { type: String },
   email: { type: String },
   address: { type: String },
