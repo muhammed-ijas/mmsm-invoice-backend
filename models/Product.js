@@ -4,7 +4,7 @@ const productSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
     name_ar: { type: String }, //  Arabic product name
-    partNumber: { type: String },
+    partNumber: { type: String ,sparse: true},
     description_en: { type: String, required: true },
     description_ar: String,//  Arabic product desc
     unitPrice: { type: Number, required: true },
